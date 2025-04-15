@@ -55,10 +55,8 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not question:
         await update.message.reply_text("Введи запит після команди /ask.")
         return
-    full_prompt = f"Автомобіль: {car}
-Питання: {question}
+    full_prompt = f"Автомобіль: {car}\\nПитання: {question}\\n\\nДай докладну відповідь українською."
 
-Дай докладну відповідь українською."
     answer = openai_api.ask_ai(full_prompt)
     await update.message.reply_text(answer)
 
