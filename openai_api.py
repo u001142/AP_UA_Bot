@@ -1,3 +1,5 @@
+# openai_api.py
+
 import os
 import requests
 
@@ -20,6 +22,10 @@ def ask_ai(prompt):
         response.raise_for_status()
         data = response.json()
 
-        return data["choices"][0]["message"]["content"]
+        # Перевірка, чи є поле "choices"
+        if "choices" in data and len(data["choices"]) > 0:
+            return data["choices"][0]["message"]["content"]
+        else:
+            return f"Помилка: відповідь від AI не містить поля 'choices': {data}"
     except Exception as e:
         return f"Виникла помилка при зверненні до AI: {e}"
