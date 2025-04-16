@@ -1,13 +1,12 @@
 import os
 from fastapi import FastAPI, Request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 )
 from dotenv import load_dotenv
 import database
 import openai_api
-from datetime import datetime
 
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
@@ -128,11 +127,11 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Введіть запит після /ask." if lang == "uk" else "Enter your question after /ask.")
         return
 
-    prompt = f"Користувач задає питання про авто: {car}"
-Питання: {question}
-Дай докладну відповідь українською." if lang == "uk" else f"User is asking about: {car}"
-Question: {question}
-reply = "Reply in English."
+    if lang == "uk":
+        prompt = f"Користувач задає питання про авто: {car}\nПитання: {question}\nДай докладну відповідь українською."
+    else:
+        prompt = f"User is asking about: {car}\nQuestion: {question}\nReply in English."
+
     answer = openai_api.ask_ai(prompt)
     await update.message.reply_text(answer)
 
