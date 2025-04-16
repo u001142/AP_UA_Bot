@@ -102,30 +102,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state["engine"] = text
         full_car = f"{state['brand']} {state['model']} {state['year']} {state['engine']}L"
         database.set_user_car(user_id, full_car)
-        USER_STATE.pop(user_id)
+        USER_STATE[user_id] = {"lang": lang, "step": "ask_ready"}
 
-        ask_button = [[InlineKeyboardButton("Задати питання" if lang == "uk" else "Ask a question", callback_data="ask_now")]]
-
+        keyboard = [[InlineKeyboardButton("Задати питання" if lang == "uk" else "Ask a question", callback_data="goto_ask")]]
         await update.message.reply_text(
             f"Ваше авто збережено: {full_car}" if lang == "uk" else f"Your car has been saved: {full_car}",
-            reply_markup=InlineKeyboardMarkup(ask_button)
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-async def handle_ask_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def goto_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await ask_simply(query, context)
-
-async def ask_simply(query, context):
     user_id = query.from_user.id
     lang = database.get_user_language(user_id) or "uk"
-    car = database.get_user_car(user_id)
-
-    if not car:
-        await query.message.reply_text("Будь ласка, спочатку оберіть авто через /start." if lang == "uk" else "Please choose your car first with /start.")
-        return
-
-    await query.message.reply_text("Напишіть своє питання після команди /ask." if lang == "uk" else "Please type your question after /ask.")
+    USER_STATE[user_id] = {"lang": lang, "step": "awaiting_question"}
+    await query.message.reply_text("Напишіть своє питання після команди /ask." if lang == "uk" else "Write your question after /ask.")
 
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -146,11 +137,7 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Введіть запит після /ask." if lang == "uk" else "Enter your question after /ask.")
         return
 
-    if lang == "uk":
-        prompt = f"Користувач задає питання про авто: {car}\nПитання: {question}\nДай докладну відповідь українською."
-    else:
-        prompt = f"User is asking about: {car}\nQuestion: {question}\nReply in English."
-
+    prompt = f"Користувач задає питання про авто: {car}\nПитання: {question}\nДай докладну відповідь українською." if lang == "uk" else f"User is asking about: {car}\nQuestion: {question}\nReply in English."
     answer = openai_api.ask_ai(prompt)
     await update.message.reply_text(answer)
 
@@ -165,5 +152,5 @@ application.add_handler(CommandHandler("ask", ask))
 application.add_handler(CommandHandler("premium", premium))
 application.add_handler(CallbackQueryHandler(handle_language, pattern="^lang_"))
 application.add_handler(CallbackQueryHandler(handle_brand, pattern="^brand_"))
-application.add_handler(CallbackQueryHandler(handle_ask_button, pattern="^ask_now$"))
+application.add_handler(CallbackQueryHandler(goto_ask, pattern="^goto_ask$"))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
