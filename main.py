@@ -6,12 +6,14 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 import database
-import openai_api
+import requests
+from datetime import datetime
 
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 app = FastAPI()
 application = Application.builder().token(TOKEN).build()
@@ -52,7 +54,7 @@ async def handle_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = query.data.split("_")[1]
     database.set_user_language(user_id, lang)
     USER_STATE[user_id] = {"lang": lang, "step": "brand"}
-    
+
     buttons = []
     row = []
     for i, brand in enumerate(BRANDS, 1):
@@ -95,7 +97,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif state["step"] == "year":
         state["year"] = text
         state["step"] = "engine"
-        await update.message.reply_text("Введіть обʼєм двигуна (наприклад: 1.6):" if lang == "uk" else "Enter engine volume (e.g. 1.6):")
+        await update.message.reply_text("Введіть обєм двигуна (наприклад: 1.6):" if lang == "uk" else "Enter engine volume (e.g. 1.6):")
 
     elif state["step"] == "engine":
         state["engine"] = text
@@ -103,9 +105,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         database.set_user_car(user_id, full_car)
         USER_STATE.pop(user_id)
 
+        ask_button = [[InlineKeyboardButton("Задати питання", switch_inline_query_current_chat="/ask ")]] if lang == "uk" else [[InlineKeyboardButton("Ask a question", switch_inline_query_current_chat="/ask ")]]
+
         await update.message.reply_text(
-            f"Ваше авто збережено: {full_car}" if lang == "uk"
-            else f"Your car has been saved: {full_car}"
+            f"Ваше авто збережено: {full_car}" if lang == "uk" else f"Your car has been saved: {full_car}",
+            reply_markup=InlineKeyboardMarkup(ask_button)
         )
 
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -127,12 +131,32 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Введіть запит після /ask." if lang == "uk" else "Enter your question after /ask.")
         return
 
-    if lang == "uk":
-        prompt = f"Користувач задає питання про авто: {car}\nПитання: {question}\nДай докладну відповідь українською."
-    else:
-        prompt = f"User is asking about: {car}\nQuestion: {question}\nReply in English."
+    prompt = (
+        f"Користувач задає питання про авто: {car}\nПитання: {question}\nДай докладну відповідь українською."
+        if lang == "uk"
+        else f"User is asking about: {car}\nQuestion: {question}\nReply in English."
+    )
 
-    answer = openai_api.ask_ai(prompt)
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "openai/gpt-4",
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ]
+            },
+            timeout=30
+        )
+        data = response.json()
+        answer = data["choices"][0]["message"]["content"]
+    except Exception as e:
+        answer = f"Помилка AI: {e}" if lang == "uk" else f"AI error: {e}"
+
     await update.message.reply_text(answer)
 
 async def premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
