@@ -132,7 +132,7 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Питання: {question}
 Дай докладну відповідь українською." if lang == "uk" else f"User is asking about: {car}
 Question: {question}
-Reply in English."
+reply = "Reply in English."
     answer = openai_api.ask_ai(prompt)
     await update.message.reply_text(answer)
 
