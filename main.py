@@ -128,7 +128,7 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Введіть запит після /ask." if lang == "uk" else "Enter your question after /ask.")
         return
 
-    prompt = f"Користувач задає питання про авто: {car}
+    prompt = f"Користувач задає питання про авто: {car}"
 Питання: {question}
 Дай докладну відповідь українською." if lang == "uk" else f"User is asking about: {car}
 Question: {question}
