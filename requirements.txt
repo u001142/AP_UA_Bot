@@ -1,5 +1,6 @@
+
+fastapi
 python-telegram-bot==20.8
 python-dotenv
-fastapi
-uvicorn
 requests
+uvicorn
