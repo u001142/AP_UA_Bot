@@ -102,44 +102,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state["engine"] = text
         full_car = f"{state['brand']} {state['model']} {state['year']} {state['engine']}L"
         database.set_user_car(user_id, full_car)
-        USER_STATE[user_id] = {"lang": lang, "step": "ask_ready"}
+        USER_STATE[user_id] = {"step": "ask_waiting", "lang": lang}  # новий крок
 
-        keyboard = [[InlineKeyboardButton("Задати питання" if lang == "uk" else "Ask a question", callback_data="goto_ask")]]
+        ask_button = [[InlineKeyboardButton("Задати питання", callback_data="ask_now")]] if lang == "uk" else [[InlineKeyboardButton("Ask a question", callback_data="ask_now")]]
+
         await update.message.reply_text(
             f"Ваше авто збережено: {full_car}" if lang == "uk" else f"Your car has been saved: {full_car}",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            reply_markup=InlineKeyboardMarkup(ask_button)
         )
 
-async def goto_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    lang = database.get_user_language(user_id) or "uk"
-    USER_STATE[user_id] = {"lang": lang, "step": "awaiting_question"}
-    await query.message.reply_text("Напишіть своє питання після команди /ask." if lang == "uk" else "Write your question after /ask.")
+    elif state["step"] == "ask_waiting":
+        car = database.get_user_car(user_id)
+        question = text
+        if not database.is_premium(user_id):
+            count = database.increment_and_get_ask_count(user_id)
+            if count > 3:
+                await update.message.reply_text("Ви вичерпали безкоштовний ліміт. Активуйте /premium." if lang == "uk" else "You reached your free limit. Use /premium.")
+                return
+        prompt = f"Користувач задає питання про авто: {car}\nПитання: {question}\nДай докладну відповідь українською." if lang == "uk" else f"User is asking about: {car}\nQuestion: {question}\nReply in English."
+        answer = openai_api.ask_ai(prompt)
+        USER_STATE.pop(user_id)
+        await update.message.reply_text(answer)
 
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     lang = database.get_user_language(user_id) or "uk"
-    car = database.get_user_car(user_id)
-    if not car:
-        await update.message.reply_text("Будь ласка, спочатку оберіть авто через /start." if lang == "uk" else "Please choose your car first with /start.")
-        return
+    USER_STATE[user_id] = {"step": "ask_waiting", "lang": lang}
+    await update.message.reply_text("Напишіть своє питання після команди /ask." if lang == "uk" else "Write your question after /ask.")
 
-    if not database.is_premium(user_id):
-        count = database.increment_and_get_ask_count(user_id)
-        if count > 3:
-            await update.message.reply_text("Ви вичерпали безкоштовний ліміт. Активуйте /premium." if lang == "uk" else "You reached your free limit. Use /premium.")
-            return
-
-    question = update.message.text.replace("/ask", "").strip()
-    if not question:
-        await update.message.reply_text("Введіть запит після /ask." if lang == "uk" else "Enter your question after /ask.")
-        return
-
-    prompt = f"Користувач задає питання про авто: {car}\nПитання: {question}\nДай докладну відповідь українською." if lang == "uk" else f"User is asking about: {car}\nQuestion: {question}\nReply in English."
-    answer = openai_api.ask_ai(prompt)
-    await update.message.reply_text(answer)
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query.data == "ask_now":
+        user_id = query.from_user.id
+        lang = database.get_user_language(user_id) or "uk"
+        USER_STATE[user_id] = {"step": "ask_waiting", "lang": lang}
+        await query.answer()
+        await query.message.reply_text("Напишіть своє питання:" if lang == "uk" else "Please write your question:")
 
 async def premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -152,5 +150,6 @@ application.add_handler(CommandHandler("ask", ask))
 application.add_handler(CommandHandler("premium", premium))
 application.add_handler(CallbackQueryHandler(handle_language, pattern="^lang_"))
 application.add_handler(CallbackQueryHandler(handle_brand, pattern="^brand_"))
-application.add_handler(CallbackQueryHandler(goto_ask, pattern="^goto_ask$"))
+application.add_handler(CallbackQueryHandler(handle_callback, pattern="^ask_now$"))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
