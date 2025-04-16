@@ -1,6 +1,6 @@
 import os
 from fastapi import FastAPI, Request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, MessageHandler,
     ContextTypes, filters
@@ -17,10 +17,10 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 app = FastAPI()
 application = Application.builder().token(TOKEN).build()
 
-# Стани для діалогу
+# Стани
 USER_STATE = {}
 
-# 20 популярних марок авто + посилання на лого
+# Марки авто + логотипи
 CAR_BRANDS = {
     "Toyota": "https://upload.wikimedia.org/wikipedia/commons/9/9d/Toyota_logo.png",
     "BMW": "https://upload.wikimedia.org/wikipedia/commons/4/44/BMW.svg",
@@ -32,14 +32,14 @@ CAR_BRANDS = {
     "Hyundai": "https://upload.wikimedia.org/wikipedia/commons/8/88/Hyundai_logo.svg",
     "Kia": "https://upload.wikimedia.org/wikipedia/commons/7/74/Kia_logo3.png",
     "Chevrolet": "https://upload.wikimedia.org/wikipedia/commons/4/4e/Chevrolet_logo.png",
-    "Mazda": "https://upload.wikimedia.org/wikipedia/commons/d/d3/Mazda_logo.png",
     "Nissan": "https://upload.wikimedia.org/wikipedia/commons/e/e2/Nissan_2020_logo.svg",
+    "Daewoo": "https://upload.wikimedia.org/wikipedia/commons/2/20/Daewoo_logo.png",
+    "ZAZ": "https://upload.wikimedia.org/wikipedia/commons/5/53/ZAZ_logo.png",
+    "Lada": "https://upload.wikimedia.org/wikipedia/commons/9/9d/Lada_Logo.png",
     "Peugeot": "https://upload.wikimedia.org/wikipedia/commons/5/5b/Peugeot_Logo_2021.png",
     "Renault": "https://upload.wikimedia.org/wikipedia/commons/5/58/Renault_2021_logo.svg",
     "Skoda": "https://upload.wikimedia.org/wikipedia/commons/8/84/Skoda_Auto_logo.png",
     "Opel": "https://upload.wikimedia.org/wikipedia/commons/8/88/Opel_Logo_2021.png",
-    "Volvo": "https://upload.wikimedia.org/wikipedia/commons/6/66/Volvo_Iron_Mark.png",
-    "Lexus": "https://upload.wikimedia.org/wikipedia/commons/6/6a/Lexus_division_emblem.svg",
     "Mitsubishi": "https://upload.wikimedia.org/wikipedia/commons/5/5f/Mitsubishi_logo.png",
     "Subaru": "https://upload.wikimedia.org/wikipedia/commons/8/84/Subaru_logo.png",
 }
@@ -60,16 +60,10 @@ async def telegram_webhook(secret: str, request: Request):
 
 # Команди
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привіт! Я — АвтоПомічникUA. Введи /choosecar щоб обрати авто або /setcar вручну.")
-
-async def setcar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if context.args:
-        car = " ".join(context.args)
-        database.set_user_car(user_id, car)
-        await update.message.reply_text(f"Твоє авто збережено: {car}")
-    else:
-        await update.message.reply_text("Використай команду так: /setcar марка модель рік")
+    await update.message.reply_text(
+        "Привіт! Я — АвтоПомічникUA. Я допоможу тобі з ремонтом будь-якого авто.\n"
+        "Введи команду /choosecar, щоб вибрати марку авто."
+    )
 
 async def choosecar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for brand, logo_url in CAR_BRANDS.items():
@@ -87,25 +81,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("brand_"):
         brand = data.split("_", 1)[1]
         USER_STATE[user_id] = {"brand": brand, "awaiting_model": True}
-        await query.message.reply_text(f"Введи модель і рік для {brand} (наприклад: Camry 2010)")
+        await query.message.reply_text(f"Введи модель і рік для {brand} (наприклад: Lanos 2008)")
 
-async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    car = database.get_user_car(user_id)
-    if not car:
-        await update.message.reply_text("Спочатку введи своє авто командою /setcar або /choosecar.")
-        return
-
-    question = update.message.text.replace("/ask", "").strip()
-    if not question:
-        await update.message.reply_text("Введи запит після команди /ask.")
-        return
-
-    full_prompt = f"Автомобіль: {car}\nПитання: {question}\n\nДай докладну відповідь українською."
-    answer = openai_api.ask_ai(full_prompt)
-    await update.message.reply_text(answer)
-
-# Обробка відповіді після вибору бренду
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text
@@ -117,12 +94,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Твоє авто збережено: {full_car}")
         USER_STATE.pop(user_id)
     else:
-        await update.message.reply_text("Щоб поставити питання, спочатку задай авто через /setcar або /choosecar.")
+        await update.message.reply_text("Щоб задати питання, спочатку обери авто через /choosecar")
 
-# Хендлери
+async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    car = database.get_user_car(user_id)
+    if not car:
+        await update.message.reply_text("Будь ласка, обери авто командою /choosecar.")
+        return
+
+    question = update.message.text.replace("/ask", "").strip()
+    if not question:
+        await update.message.reply_text("Введи запит після команди /ask.")
+        return
+
+    full_prompt = f"Автомобіль: {car}\nПитання: {question}\n\nДай докладну відповідь українською."
+    answer = openai_api.ask_ai(full_prompt)
+    await update.message.reply_text(answer)
+
+# Обробники
 application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("setcar", setcar))
 application.add_handler(CommandHandler("choosecar", choosecar))
 application.add_handler(CommandHandler("ask", ask))
 application.add_handler(CallbackQueryHandler(button_callback))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)) 
