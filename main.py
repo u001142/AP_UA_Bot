@@ -6,14 +6,13 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 import database
-import requests
+import openai_api
 from datetime import datetime
 
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 app = FastAPI()
 application = Application.builder().token(TOKEN).build()
@@ -97,7 +96,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif state["step"] == "year":
         state["year"] = text
         state["step"] = "engine"
-        await update.message.reply_text("Введіть обєм двигуна (наприклад: 1.6):" if lang == "uk" else "Enter engine volume (e.g. 1.6):")
+        await update.message.reply_text("Введіть обʼєм двигуна (наприклад: 1.6):" if lang == "uk" else "Enter engine volume (e.g. 1.6):")
 
     elif state["step"] == "engine":
         state["engine"] = text
@@ -105,12 +104,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         database.set_user_car(user_id, full_car)
         USER_STATE.pop(user_id)
 
-        ask_button = [[InlineKeyboardButton("Задати питання", switch_inline_query_current_chat="/ask ")]] if lang == "uk" else [[InlineKeyboardButton("Ask a question", switch_inline_query_current_chat="/ask ")]]
+        ask_button = [[InlineKeyboardButton("Задати питання" if lang == "uk" else "Ask a question", callback_data="ask_now")]]
 
         await update.message.reply_text(
             f"Ваше авто збережено: {full_car}" if lang == "uk" else f"Your car has been saved: {full_car}",
             reply_markup=InlineKeyboardMarkup(ask_button)
         )
+
+async def handle_ask_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await ask_simply(query, context)
+
+async def ask_simply(query, context):
+    user_id = query.from_user.id
+    lang = database.get_user_language(user_id) or "uk"
+    car = database.get_user_car(user_id)
+
+    if not car:
+        await query.message.reply_text("Будь ласка, спочатку оберіть авто через /start." if lang == "uk" else "Please choose your car first with /start.")
+        return
+
+    await query.message.reply_text("Напишіть своє питання після команди /ask." if lang == "uk" else "Please type your question after /ask.")
 
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -131,32 +146,12 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Введіть запит після /ask." if lang == "uk" else "Enter your question after /ask.")
         return
 
-    prompt = (
-        f"Користувач задає питання про авто: {car}\nПитання: {question}\nДай докладну відповідь українською."
-        if lang == "uk"
-        else f"User is asking about: {car}\nQuestion: {question}\nReply in English."
-    )
+    if lang == "uk":
+        prompt = f"Користувач задає питання про авто: {car}\nПитання: {question}\nДай докладну відповідь українською."
+    else:
+        prompt = f"User is asking about: {car}\nQuestion: {question}\nReply in English."
 
-    try:
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "openai/gpt-4",
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ]
-            },
-            timeout=30
-        )
-        data = response.json()
-        answer = data["choices"][0]["message"]["content"]
-    except Exception as e:
-        answer = f"Помилка AI: {e}" if lang == "uk" else f"AI error: {e}"
-
+    answer = openai_api.ask_ai(prompt)
     await update.message.reply_text(answer)
 
 async def premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -170,4 +165,5 @@ application.add_handler(CommandHandler("ask", ask))
 application.add_handler(CommandHandler("premium", premium))
 application.add_handler(CallbackQueryHandler(handle_language, pattern="^lang_"))
 application.add_handler(CallbackQueryHandler(handle_brand, pattern="^brand_"))
+application.add_handler(CallbackQueryHandler(handle_ask_button, pattern="^ask_now$"))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
