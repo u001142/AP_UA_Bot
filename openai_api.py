@@ -1,19 +1,17 @@
-
 import os
 import requests
 
-API_KEY = os.getenv("OPENROUTER_API_KEY")
-BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
-
 def ask_ai(prompt: str) -> str:
     headers = {
-        "Authorization": f"Bearer {API_KEY}",
+        "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
         "Content-Type": "application/json"
     }
-    body = {
-        "model": "openrouter/codellama-70b-instruct",
+    json = {
+        "model": "openai/gpt-3.5-turbo",
         "messages": [{"role": "user", "content": prompt}]
     }
-    response = requests.post(BASE_URL, headers=headers, json=body)
-    data = response.json()
-    return data["choices"][0]["message"]["content"]
+    try:
+        r = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=json)
+        return r.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        return "Помилка запиту до ШІ. Спробуйте пізніше."

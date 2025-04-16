@@ -1,6 +1,5 @@
-
 fastapi
 python-telegram-bot==20.8
 python-dotenv
-requests
 uvicorn
+requests
